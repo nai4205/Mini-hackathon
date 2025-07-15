@@ -1,6 +1,7 @@
 // Dashboard.tsx
 
 import SummaryContainer from '@/components/tracker/SummaryContainer';
+import GeminiDashboard from '@/components/tracker/GeminiDashboard';
 import { Colors, GlobalStyles } from '@/constants/Styles';
 import React from 'react';
 import { ScrollView, Text, View } from 'react-native';
@@ -20,6 +21,10 @@ const Dashboard = () => {
       <ScrollView showsVerticalScrollIndicator={false}>
 
         <SummaryContainer />
+
+        {/* AI Insights */}
+        <GeminiDashboard />
+
         {/* Key Metrics */}
         <Text style={GlobalStyles.sectionTitle}>Key Metrics</Text>
 
