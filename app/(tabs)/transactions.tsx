@@ -1,7 +1,12 @@
+import QuickInsights from '@/components/tracker/QuickInsights';
+import SmartCategorization from '@/components/tracker/SmartCategorization';
+import SpendingInsights from '@/components/tracker/SpendingInsights';
+import TransactionAI from '@/components/tracker/TransactionAI';
 import { BorderRadius, Colors, GlobalStyles, Spacing, Typography } from '@/constants/Styles';
-import { getCategoryIcon, transactionsData } from '@/data/transactions';
+import { getCategoryIcon, Transaction, transactionsData } from '@/data/transactions';
 import React, { useMemo, useState } from 'react';
 import {
+    Alert,
     ScrollView,
     StyleSheet,
     Text,
@@ -27,9 +32,11 @@ const Transactions = () => {
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'income' | 'expenses'>('all');
   const [sortBy, setSortBy] = useState<SortOption>('date-desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [showAIRecommendations, setShowAIRecommendations] = useState(true);
+  const [localTransactions, setLocalTransactions] = useState<Transaction[]>(transactionsData);
 
   const filteredTransactions = useMemo(() => {
-    let filtered = transactionsData.filter((transaction) => {
+    let filtered = localTransactions.filter((transaction) => {
       const matchesSearch = transaction.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            transaction.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            transaction.description.toLowerCase().includes(searchQuery.toLowerCase());
@@ -63,7 +70,55 @@ const Transactions = () => {
     });
 
     return filtered;
-  }, [searchQuery, selectedFilter, sortBy]);
+  }, [localTransactions, searchQuery, selectedFilter, sortBy]);
+
+  // Calculate insights for QuickInsights component
+  const quickInsightsData = useMemo(() => {
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    
+    const currentMonthTransactions = filteredTransactions.filter(t => {
+      const transactionDate = new Date(t.date);
+      return transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear;
+    });
+
+    const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const previousYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+    
+    const previousMonthTransactions = localTransactions.filter(t => {
+      const transactionDate = new Date(t.date);
+      return transactionDate.getMonth() === previousMonth && transactionDate.getFullYear() === previousYear;
+    });
+
+    const getCurrentTotal = (transactions: any[]) => {
+      if (selectedFilter === 'income') {
+        return transactions.filter(t => t.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
+      } else if (selectedFilter === 'expenses') {
+        return Math.abs(transactions.filter(t => t.type === 'Expense').reduce((sum, t) => sum + t.amount, 0));
+      } else {
+        const income = transactions.filter(t => t.type === 'Income').reduce((sum, t) => sum + t.amount, 0);
+        const expenses = Math.abs(transactions.filter(t => t.type === 'Expense').reduce((sum, t) => sum + t.amount, 0));
+        return income - expenses;
+      }
+    };
+
+    const currentTotal = getCurrentTotal(currentMonthTransactions);
+    const previousTotal = getCurrentTotal(previousMonthTransactions);
+    const percentageChange = previousTotal !== 0 ? ((currentTotal - previousTotal) / Math.abs(previousTotal)) * 100 : 0;
+
+    return {
+      currentMonthTotal: currentTotal,
+      percentageChange
+    };
+  }, [filteredTransactions, selectedFilter, localTransactions]);
+
+  const handleAddTransaction = (newTransaction: Omit<Transaction, 'date'>) => {
+    const transaction: Transaction = {
+      ...newTransaction,
+      date: new Date().toISOString().split('T')[0], // Today's date
+    };
+    setLocalTransactions(prev => [transaction, ...prev]);
+  };
 
   const getSortLabel = (option: SortOption): string => {
     switch (option) {
@@ -97,20 +152,43 @@ const Transactions = () => {
     </TouchableOpacity>
   );
 
+  const handleRecommendationPress = (recommendation: any) => {
+    Alert.alert(
+      recommendation.title,
+      `${recommendation.description}\n\n${recommendation.potentialSavings ? `Potential Savings: $${recommendation.potentialSavings.toFixed(2)}` : ''}`,
+      [
+        { text: 'Dismiss', style: 'cancel' },
+        { text: 'Take Action', onPress: () => console.log('Taking action on:', recommendation) }
+      ]
+    );
+  };
+
   return (
     <View style={GlobalStyles.containerPadded}>
       {/* Header */}
       <View style={GlobalStyles.header}>
-        <Text style={GlobalStyles.title}>Transactions</Text>
+        <View>
+          <Text style={GlobalStyles.title}>Transactions</Text>
+          {showAIRecommendations && (
+            <Text style={styles.aiIndicator}>AI Features Active</Text>
+          )}
+        </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity 
+            style={[styles.sortButton, showAIRecommendations && styles.aiActiveButton]}
+            onPress={() => setShowAIRecommendations(!showAIRecommendations)}
+          >
+            <Icon 
+              name="bulb-outline" 
+              size={20} 
+              color={showAIRecommendations ? Colors.primary : Colors.textSecondary} 
+            />
+          </TouchableOpacity>
           <TouchableOpacity 
             style={styles.sortButton}
             onPress={() => setShowSortMenu(!showSortMenu)}
           >
             <Icon name="funnel-outline" size={20} color={Colors.textSecondary} />
-          </TouchableOpacity>
-          <TouchableOpacity>
-            <Icon name="add" size={24} color={Colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -139,6 +217,16 @@ const Transactions = () => {
         </View>
       )}
 
+      {/* Smart Add Transaction */}
+      <SmartCategorization onAddTransaction={handleAddTransaction} />
+
+      {/* Quick AI Insights */}
+      <QuickInsights 
+        selectedTab={selectedFilter === 'all' ? 'expenses' : selectedFilter}
+        currentMonthTotal={quickInsightsData.currentMonthTotal}
+        percentageChange={quickInsightsData.percentageChange}
+      />
+
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <Icon name="search-outline" size={20} color={Colors.textSecondary} style={styles.searchIcon} />
@@ -150,6 +238,19 @@ const Transactions = () => {
           onChangeText={setSearchQuery}
         />
       </View>
+
+      {/* AI Recommendations */}
+      {showAIRecommendations && (
+        <TransactionAI 
+          transactions={filteredTransactions} 
+          onRecommendationPress={handleRecommendationPress}
+        />
+      )}
+
+      {/* Advanced Spending Insights */}
+      {showAIRecommendations && (
+        <SpendingInsights transactions={localTransactions} />
+      )}
 
       {/* Filter Tabs */}
       <View style={styles.filterContainer}>
@@ -195,9 +296,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.md,
   },
+  aiIndicator: {
+    fontSize: Typography.xs,
+    color: Colors.primary,
+    fontWeight: Typography.medium,
+    marginTop: Spacing.xs,
+  },
   sortButton: {
     padding: Spacing.xs,
     borderRadius: BorderRadius.sm,
+  },
+  aiActiveButton: {
+    backgroundColor: Colors.primaryLight,
   },
   sortMenu: {
     backgroundColor: Colors.cardBackground,

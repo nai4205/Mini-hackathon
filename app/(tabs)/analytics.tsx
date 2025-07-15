@@ -77,7 +77,7 @@ const Analytics = () => {
     </View>
   );
 
-  const handleCategoryPress = async (category: TopCategory) => {
+  const handleCategoryPress = (category: TopCategory) => {
     // Filter transactions by the selected category
     const categoryTransactions = transactionsData.filter(transaction => 
       transaction.category === category.name && 
@@ -88,59 +88,22 @@ const Analytics = () => {
       sum + Math.abs(transaction.amount), 0
     );
 
-    // Get AI insights for this specific category
-    try {
-      const response = await fetch('http://localhost:3000/api/generate-category-insights', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+    // Show basic category details
+    Alert.alert(
+      `${category.name} Details`,
+      `Total ${selectedTab === 'income' ? 'Income' : 'Expenses'}: $${totalAmount.toLocaleString()}\n` +
+      `Transactions: ${category.transactions}\n` +
+      `Average per transaction: $${(totalAmount / category.transactions).toFixed(2)}`,
+      [
+        {
+          text: 'View Transactions',
+          onPress: () => {
+            Alert.alert('Navigation', `Would navigate to transactions filtered by "${category.name}"`);
+          }
         },
-        body: JSON.stringify({ 
-          transactions: categoryTransactions,
-          category: category.name,
-          type: selectedTab === 'income' ? 'Income' : 'Expense'
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Show enhanced category details with AI insights
-        Alert.alert(
-          `${category.name} AI Analysis`,
-          `${data.insight || `Total ${selectedTab === 'income' ? 'Income' : 'Expenses'}: $${totalAmount.toLocaleString()}\nTransactions: ${category.transactions}\nAverage per transaction: $${(totalAmount / category.transactions).toFixed(2)}`}`,
-          [
-            {
-              text: 'View Transactions',
-              onPress: () => {
-                Alert.alert('Navigation', `Would navigate to transactions filtered by "${category.name}"`);
-              }
-            },
-            { text: 'Close', style: 'cancel' }
-          ]
-        );
-      } else {
-        throw new Error('AI analysis unavailable');
-      }
-    } catch (error) {
-      // Fallback to basic category details
-      Alert.alert(
-        `${category.name} Details`,
-        `Total ${selectedTab === 'income' ? 'Income' : 'Expenses'}: $${totalAmount.toLocaleString()}\n` +
-        `Transactions: ${category.transactions}\n` +
-        `Average per transaction: $${(totalAmount / category.transactions).toFixed(2)}\n\n` +
-        `💡 Tip: AI analysis temporarily unavailable`,
-        [
-          {
-            text: 'View Transactions',
-            onPress: () => {
-              Alert.alert('Navigation', `Would navigate to transactions filtered by "${category.name}"`);
-            }
-          },
-          { text: 'Close', style: 'cancel' }
-        ]
-      );
-    }
+        { text: 'Close', style: 'cancel' }
+      ]
+    );
   };
 
   const renderTopCategory = (category: TopCategory, index: number) => (
@@ -155,12 +118,9 @@ const Analytics = () => {
           <Icon name={category.icon} size={24} color={Colors.textSecondary} />
         </View>
         <View style={styles.categoryInfo}>
-          <View style={styles.categoryNameRow}>
-            <Text style={styles.categoryName}>{category.name}</Text>
-            <Icon name="sparkles" size={12} color={Colors.primary} style={styles.aiIndicator} />
-          </View>
+          <Text style={styles.categoryName}>{category.name}</Text>
           <Text style={styles.categoryTransactions}>
-            {category.transactions} transactions • Tap for AI insights
+            {category.transactions} transactions
           </Text>
         </View>
       </View>
