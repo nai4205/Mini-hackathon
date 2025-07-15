@@ -404,6 +404,90 @@ app.post('/api/generate-chart-insights', async (req, res) => {
   }
 });
 
+// New endpoint for month-specific insights
+app.post('/api/generate-month-insights', async (req, res) => {
+  try {
+    const { transactions, selectedMonth } = req.body;
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    // Filter transactions for the selected month
+    const monthTransactions = transactions.filter(t => {
+      if (selectedMonth === 'all') return true;
+      const transactionDate = new Date(t.date);
+      const transactionMonth = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`;
+      return transactionMonth === selectedMonth;
+    });
+
+    const totalIncome = monthTransactions
+      .filter(t => t.type === 'Income')
+      .reduce((sum, t) => sum + t.amount, 0);
+    
+    const totalExpenses = monthTransactions
+      .filter(t => t.type === 'Expense')
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    
+    const netProfit = totalIncome - totalExpenses;
+
+    // Get top categories for the month
+    const categoryBreakdown = monthTransactions.reduce((acc, t) => {
+      acc[t.category] = (acc[t.category] || 0) + Math.abs(t.amount);
+      return acc;
+    }, {});
+
+    const topCategories = Object.entries(categoryBreakdown)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 3);
+
+    const monthLabel = selectedMonth === 'all' ? 'All Time' : 
+      new Date(selectedMonth + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    const prompt = `
+      Analyze the financial performance for ${monthLabel}:
+      
+      Summary:
+      - Total Income: $${totalIncome.toLocaleString()}
+      - Total Expenses: $${totalExpenses.toLocaleString()}  
+      - Net Profit: $${netProfit.toLocaleString()}
+      - Number of Transactions: ${monthTransactions.length}
+      
+      Top Categories:
+      ${topCategories.map(([cat, amount]) => `- ${cat}: $${amount.toLocaleString()}`).join('\n      ')}
+      
+      Provide a brief analysis (2-3 sentences) focusing on:
+      1. Overall financial health for this ${selectedMonth === 'all' ? 'period' : 'month'}
+      2. Notable spending patterns or category performance
+      3. One actionable insight or recommendation
+      
+      Keep it concise and business-focused.
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const insightText = response.text();
+
+    res.json({ 
+      insight: insightText.trim(),
+      metadata: {
+        selectedMonth,
+        monthLabel,
+        totalIncome,
+        totalExpenses,
+        netProfit,
+        transactionCount: monthTransactions.length,
+        topCategories,
+        profitMargin: totalIncome > 0 ? ((netProfit / totalIncome) * 100).toFixed(1) : 0
+      }
+    });
+  } catch (error) {
+    console.error('Error generating month insights:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate month insights',
+      message: 'AI analysis temporarily unavailable'
+    });
+  }
+});
+
 // Quick insights endpoint
 app.post('/api/generate-quick-insights', async (req, res) => {
   try {

@@ -34,6 +34,8 @@ const Transactions = () => {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showAIRecommendations, setShowAIRecommendations] = useState(true);
   const [localTransactions, setLocalTransactions] = useState<Transaction[]>(transactionsData);
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
 
   const filteredTransactions = useMemo(() => {
     let filtered = localTransactions.filter((transaction) => {
@@ -41,12 +43,20 @@ const Transactions = () => {
                            transaction.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            transaction.description.toLowerCase().includes(searchQuery.toLowerCase());
       
-      if (selectedFilter === 'income') {
-        return matchesSearch && transaction.type === 'Income';
-      } else if (selectedFilter === 'expenses') {
-        return matchesSearch && transaction.type === 'Expense';
+      // Filter by month
+      let matchesMonth = true;
+      if (selectedMonth !== 'all') {
+        const transactionDate = new Date(transaction.date);
+        const transactionMonth = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`;
+        matchesMonth = transactionMonth === selectedMonth;
       }
-      return matchesSearch;
+      
+      if (selectedFilter === 'income') {
+        return matchesSearch && matchesMonth && transaction.type === 'Income';
+      } else if (selectedFilter === 'expenses') {
+        return matchesSearch && matchesMonth && transaction.type === 'Expense';
+      }
+      return matchesSearch && matchesMonth;
     });
 
     // Apply sorting
@@ -70,25 +80,66 @@ const Transactions = () => {
     });
 
     return filtered;
-  }, [localTransactions, searchQuery, selectedFilter, sortBy]);
+  }, [localTransactions, searchQuery, selectedFilter, sortBy, selectedMonth]);
+
+  // Get available months from transactions
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    localTransactions.forEach(transaction => {
+      const date = new Date(transaction.date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      months.add(monthKey);
+    });
+    return Array.from(months).sort().reverse(); // Most recent first
+  }, [localTransactions]);
+
+  const getMonthLabel = (monthKey: string): string => {
+    if (monthKey === 'all') return 'All Months';
+    const [year, month] = monthKey.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1);
+    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  };
 
   // Calculate insights for QuickInsights component
   const quickInsightsData = useMemo(() => {
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
+    let currentMonthTransactions, previousMonthTransactions;
     
-    const currentMonthTransactions = filteredTransactions.filter(t => {
-      const transactionDate = new Date(t.date);
-      return transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear;
-    });
+    if (selectedMonth === 'all') {
+      // Use current month for "all" view
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+      
+      currentMonthTransactions = filteredTransactions.filter(t => {
+        const transactionDate = new Date(t.date);
+        return transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear;
+      });
 
-    const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1;
-    const previousYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    
-    const previousMonthTransactions = localTransactions.filter(t => {
-      const transactionDate = new Date(t.date);
-      return transactionDate.getMonth() === previousMonth && transactionDate.getFullYear() === previousYear;
-    });
+      const previousMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+      const previousYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      
+      previousMonthTransactions = localTransactions.filter(t => {
+        const transactionDate = new Date(t.date);
+        return transactionDate.getMonth() === previousMonth && transactionDate.getFullYear() === previousYear;
+      });
+    } else {
+      // Use selected month
+      const [year, month] = selectedMonth.split('-');
+      const selectedYear = parseInt(year);
+      const selectedMonthNum = parseInt(month) - 1;
+      
+      currentMonthTransactions = filteredTransactions;
+      
+      // Previous month for comparison
+      const prevMonthNum = selectedMonthNum === 0 ? 11 : selectedMonthNum - 1;
+      const prevYear = selectedMonthNum === 0 ? selectedYear - 1 : selectedYear;
+      const prevMonthKey = `${prevYear}-${String(prevMonthNum + 1).padStart(2, '0')}`;
+      
+      previousMonthTransactions = localTransactions.filter(t => {
+        const transactionDate = new Date(t.date);
+        const transactionMonth = `${transactionDate.getFullYear()}-${String(transactionDate.getMonth() + 1).padStart(2, '0')}`;
+        return transactionMonth === prevMonthKey;
+      });
+    }
 
     const getCurrentTotal = (transactions: any[]) => {
       if (selectedFilter === 'income') {
@@ -110,7 +161,7 @@ const Transactions = () => {
       currentMonthTotal: currentTotal,
       percentageChange
     };
-  }, [filteredTransactions, selectedFilter, localTransactions]);
+  }, [filteredTransactions, selectedFilter, localTransactions, selectedMonth]);
 
   const handleAddTransaction = (newTransaction: Omit<Transaction, 'date'>) => {
     const transaction: Transaction = {
@@ -134,23 +185,42 @@ const Transactions = () => {
 
   const sortOptions: SortOption[] = ['date-desc', 'date-asc', 'amount-desc', 'amount-asc', 'vendor-asc', 'category-asc'];
 
-  const renderTransactionItem = (transaction: TransactionItem, index: number) => (
-    <TouchableOpacity key={index} style={styles.transactionItem}>
-      <View style={styles.transactionIconContainer}>
-        <Icon name={getCategoryIcon(transaction.category)} size={24} color={Colors.textSecondary} />
+  const renderTransactionItem = (transaction: TransactionItem, index: number) => {
+    // Check if this is the first transaction of a new date
+    const currentDate = new Date(transaction.date).toDateString();
+    const previousDate = index > 0 ? new Date(filteredTransactions[index - 1].date).toDateString() : null;
+    const isNewDate = currentDate !== previousDate;
+
+    return (
+      <View key={index}>
+        {isNewDate && (
+          <Text style={styles.dateHeader}>
+            {new Date(transaction.date).toLocaleDateString('en-US', { 
+              weekday: 'long',
+              month: 'long', 
+              day: 'numeric',
+              year: selectedMonth === 'all' ? 'numeric' : undefined
+            })}
+          </Text>
+        )}
+        <TouchableOpacity style={styles.transactionItem}>
+          <View style={styles.transactionIconContainer}>
+            <Icon name={getCategoryIcon(transaction.category)} size={24} color={Colors.textSecondary} />
+          </View>
+          <View style={styles.transactionContent}>
+            <Text style={styles.transactionTitle}>{transaction.vendor}</Text>
+            <Text style={styles.transactionCategory}>{transaction.category}</Text>
+          </View>
+          <Text style={[
+            styles.transactionAmount,
+            transaction.type === 'Income' ? styles.incomeAmount : styles.expenseAmount
+          ]}>
+            {transaction.type === 'Income' ? '+' : ''}${Math.abs(transaction.amount).toFixed(2)}
+          </Text>
+        </TouchableOpacity>
       </View>
-      <View style={styles.transactionContent}>
-        <Text style={styles.transactionTitle}>{transaction.vendor}</Text>
-        <Text style={styles.transactionCategory}>{transaction.category}</Text>
-      </View>
-      <Text style={[
-        styles.transactionAmount,
-        transaction.type === 'Income' ? styles.incomeAmount : styles.expenseAmount
-      ]}>
-        {transaction.type === 'Income' ? '+' : ''}${Math.abs(transaction.amount).toFixed(2)}
-      </Text>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   const handleRecommendationPress = (recommendation: any) => {
     Alert.alert(
@@ -186,6 +256,12 @@ const Transactions = () => {
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.sortButton}
+            onPress={() => setShowMonthPicker(!showMonthPicker)}
+          >
+            <Icon name="calendar-outline" size={20} color={Colors.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.sortButton}
             onPress={() => setShowSortMenu(!showSortMenu)}
           >
             <Icon name="funnel-outline" size={20} color={Colors.textSecondary} />
@@ -214,6 +290,60 @@ const Transactions = () => {
               )}
             </TouchableOpacity>
           ))}
+        </View>
+      )}
+
+      {/* Month Picker Menu */}
+      {showMonthPicker && (
+        <View style={styles.sortMenu}>
+          <Text style={styles.sortMenuTitle}>Filter by Month</Text>
+          <TouchableOpacity
+            style={[styles.sortOption, selectedMonth === 'all' && styles.activeSortOption]}
+            onPress={() => {
+              setSelectedMonth('all');
+              setShowMonthPicker(false);
+            }}
+          >
+            <Text style={[styles.sortOptionText, selectedMonth === 'all' && styles.activeSortOptionText]}>
+              All Months
+            </Text>
+            {selectedMonth === 'all' && (
+              <Icon name="checkmark" size={20} color={Colors.primary} />
+            )}
+          </TouchableOpacity>
+          {availableMonths.map((month) => (
+            <TouchableOpacity
+              key={month}
+              style={[styles.sortOption, selectedMonth === month && styles.activeSortOption]}
+              onPress={() => {
+                setSelectedMonth(month);
+                setShowMonthPicker(false);
+              }}
+            >
+              <Text style={[styles.sortOptionText, selectedMonth === month && styles.activeSortOptionText]}>
+                {getMonthLabel(month)}
+              </Text>
+              {selectedMonth === month && (
+                <Icon name="checkmark" size={20} color={Colors.primary} />
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Selected Month Indicator */}
+      {selectedMonth !== 'all' && (
+        <View style={styles.monthIndicator}>
+          <Icon name="calendar-outline" size={16} color={Colors.primary} />
+          <Text style={styles.monthIndicatorText}>
+            Showing: {getMonthLabel(selectedMonth)}
+          </Text>
+          <TouchableOpacity 
+            onPress={() => setSelectedMonth('all')}
+            style={styles.clearMonthButton}
+          >
+            <Icon name="close-outline" size={16} color={Colors.textSecondary} />
+          </TouchableOpacity>
         </View>
       )}
 
@@ -281,8 +411,14 @@ const Transactions = () => {
       </View>
 
       {/* Transactions List */}
+      <View style={styles.transactionsHeader}>
+        <Text style={styles.transactionCount}>
+          {filteredTransactions.length} transaction{filteredTransactions.length !== 1 ? 's' : ''}
+          {selectedMonth !== 'all' && ` in ${getMonthLabel(selectedMonth)}`}
+        </Text>
+      </View>
       <ScrollView showsVerticalScrollIndicator={false} style={styles.transactionsList}>
-        {filteredTransactions.map(renderTransactionItem)}
+        {filteredTransactions.map((transaction, index) => renderTransactionItem(transaction, index))}
       </ScrollView>
     </View>
   );
@@ -447,5 +583,41 @@ const styles = StyleSheet.create({
   },
   expenseAmount: {
     color: Colors.textPrimary,
+  },
+  monthIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    marginBottom: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  monthIndicatorText: {
+    flex: 1,
+    fontSize: Typography.sm,
+    color: Colors.primary,
+    fontWeight: Typography.medium,
+  },
+  clearMonthButton: {
+    padding: Spacing.xs,
+    borderRadius: BorderRadius.sm,
+  },
+  transactionsHeader: {
+    marginBottom: Spacing.md,
+  },
+  transactionCount: {
+    fontSize: Typography.sm,
+    color: Colors.textSecondary,
+    fontWeight: Typography.medium,
+  },
+  dateHeader: {
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+    color: Colors.textPrimary,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
+    marginLeft: Spacing.sm,
   },
 });
