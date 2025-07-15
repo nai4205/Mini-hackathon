@@ -1,75 +1,195 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+// Dashboard.tsx
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import Icon from 'react-native-vector-icons/Ionicons';
 
-export default function HomeScreen() {
+const revenueData = [0, 8, 5, 9, 4, 11, 3, 10, 2, 13, 6, 12];
+
+const Dashboard = () => {
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Dashboard</Text>
+        <Icon name="settings-outline" size={24} />
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false}>
+
+        {/* Summary Boxes */}
+        <View style={styles.summaryContainer}>
+          <View style={styles.summaryBox}>
+            <Text style={styles.label}>Total Expenditure</Text>
+            <Text style={styles.value}>$12,500</Text>
+          </View>
+          <View style={styles.summaryBox}>
+            <Text style={styles.label}>Net Profit</Text>
+            <Text style={styles.value}>$8,750</Text>
+          </View>
+        </View>
+
+        {/* Key Metrics */}
+        <Text style={styles.sectionTitle}>Key Metrics</Text>
+
+        {/* Revenue Trend */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Revenue Trend</Text>
+          <Text style={styles.cardValue}>$20,000</Text>
+          <Text style={styles.cardSubValue}>Last 6 Months <Text style={styles.positive}>+15%</Text></Text>
+          {/* <LineChart
+            style={styles.chart}
+            data={revenueData}
+            svg={{ stroke: '#3b82f6', strokeWidth: 2 }}
+            contentInset={{ top: 10, bottom: 10 }}
+          /> */}
+          <View style={styles.monthLabels}>
+            {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((month) => (
+              <Text key={month} style={styles.monthLabel}>{month}</Text>
+            ))}
+          </View>
+        </View>
+
+        {/* Expense Breakdown */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Expense Breakdown</Text>
+          <Text style={styles.cardValue}>$12,500</Text>
+          <Text style={styles.cardSubValue}>This Month <Text style={styles.negative}>-5%</Text></Text>
+          <View style={styles.barChart}>
+            {['Rent', 'Salaries', 'Marketing', 'Supplies'].map((item, i) => (
+              <View style={styles.barItem} key={i}>
+                <View style={[styles.bar, { height: [40, 100, 40, 70][i] }]} />
+                <Text style={styles.barLabel}>{item}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+      </ScrollView>
+    </View>
   );
-}
+};
+
+export default Dashboard;
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    padding: 16,
+    backgroundColor: '#f9fafb',
   },
-  stepContainer: {
-    gap: 8,
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  summaryContainer: {
+    flexDirection: 'row',
+    marginTop: 16,
+    gap: 16,
+  },
+  summaryBox: {
+    flex: 1,
+    backgroundColor: '#e5e7eb',
+    padding: 16,
+    borderRadius: 12,
+  },
+  label: {
+    color: '#6b7280',
+    fontSize: 14,
+  },
+  value: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#111827',
+    marginTop: 4,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginVertical: 20,
+    color: '#111827',
+  },
+  card: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  cardValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#111827',
+    marginTop: 4,
+  },
+  cardSubValue: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 12,
+  },
+  positive: {
+    color: '#10b981',
+  },
+  negative: {
+    color: '#f97316',
+  },
+  chart: {
+    height: 120,
     marginBottom: 8,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  monthLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  monthLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  barChart: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    marginTop: 16,
+    height: 100,
+  },
+  barItem: {
+    alignItems: 'center',
+  },
+  bar: {
+    width: 30,
+    backgroundColor: '#dbeafe',
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 4,
+  },
+  barLabel: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingTop: 12,
+    paddingBottom: 24,
+    marginTop: 8,
+  },
+  navItem: {
+    alignItems: 'center',
+  },
+  navLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  navLabelActive: {
+    color: '#000',
+    fontWeight: '600',
   },
 });
