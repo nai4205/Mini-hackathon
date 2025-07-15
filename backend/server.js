@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: './gemini.env' });
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
@@ -7,7 +7,7 @@ const port = 3000;
 
 app.use(express.json());
 
-const genAI = new GoogleGenerativeAI("");
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.post('/api/generate-insights', async (req, res) => {
   try {
@@ -521,6 +521,119 @@ app.post('/api/generate-quick-insights', async (req, res) => {
     console.error('Error generating quick insights:', error);
     res.status(500).json({ 
       error: 'Failed to generate quick insights'
+    });
+  }
+});
+
+// New endpoint for AI budget suggestions
+app.post('/api/generate-budget-suggestions', async (req, res) => {
+  try {
+    const { transactions, currentBudgets, categoryAverages } = req.body;
+
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+    // Calculate overall spending trends
+    const totalSpending = Object.values(categoryAverages).reduce((sum, amount) => sum + amount, 0);
+    const categoryCount = Object.keys(categoryAverages).length;
+
+    // Calculate variance and trends for each category
+    const categoryAnalysis = Object.entries(categoryAverages).map(([category, avgSpending]) => {
+      const currentBudget = currentBudgets[category] || 0;
+      const variance = currentBudget > 0 ? ((avgSpending - currentBudget) / currentBudget * 100) : 0;
+      
+      return {
+        category,
+        avgSpending: Math.round(avgSpending),
+        currentBudget,
+        variance: Math.round(variance * 100) / 100,
+        utilizationRate: currentBudget > 0 ? Math.round((avgSpending / currentBudget) * 100) : 0
+      };
+    });
+
+    const prompt = `
+      You are a financial advisor AI specializing in budget optimization. Analyze the spending data and provide intelligent budget suggestions.
+
+      **Business Context:**
+      - Total monthly spending: $${totalSpending.toLocaleString()}
+      - Number of categories: ${categoryCount}
+      - Current budgets vs actual spending analysis below
+
+      **Category Analysis:**
+      ${categoryAnalysis.map(cat => 
+        `- ${cat.category}: Budget $${cat.currentBudget.toLocaleString()}, Avg Spending $${cat.avgSpending.toLocaleString()}, Utilization ${cat.utilizationRate}%`
+      ).join('\n      ')}
+
+      **Instructions:**
+      1. For each category, suggest an optimal budget based on historical spending patterns
+      2. Consider seasonal variations and business growth
+      3. Provide a 15-20 word reasoning for each suggestion
+      4. Only suggest changes for categories where adjustment would be beneficial (>10% difference)
+      5. Focus on categories that are consistently over/under budget
+
+      **Budget Optimization Rules:**
+      - If utilization is >95%: suggest increasing budget by 10-20%
+      - If utilization is <60%: suggest decreasing budget to 80-90% of average spending
+      - If utilization is 60-95%: budget is optimal, don't suggest changes
+      - For essential categories (Rent, Salaries), be conservative with reductions
+      - For variable categories (Marketing, Travel), be more flexible
+
+      Please format your response as a JSON array of budget suggestions:
+      [
+        {
+          "category": "Category Name",
+          "currentBudget": 1000,
+          "suggestedBudget": 1200,
+          "avgSpending": 1150,
+          "reasoning": "Consistently overspending suggests need for budget increase to avoid financial strain"
+        }
+      ]
+
+      Only include categories that need adjustment. If all budgets are optimal, return an empty array.
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const insightText = response.text();
+
+    // Parse the JSON response from AI
+    let suggestions = [];
+    try {
+      const jsonMatch = insightText.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        suggestions = JSON.parse(jsonMatch[0]);
+      }
+    } catch (parseError) {
+      console.error('Error parsing AI budget suggestions:', parseError);
+      // Fallback: Generate simple suggestions based on utilization rates
+      suggestions = categoryAnalysis
+        .filter(cat => cat.utilizationRate > 100 || cat.utilizationRate < 60)
+        .map(cat => ({
+          category: cat.category,
+          currentBudget: cat.currentBudget,
+          suggestedBudget: cat.utilizationRate > 100 
+            ? Math.round(cat.avgSpending * 1.1) 
+            : Math.round(cat.avgSpending * 1.05),
+          avgSpending: cat.avgSpending,
+          reasoning: cat.utilizationRate > 100 
+            ? "Consistently overspending, increase budget to reduce financial pressure"
+            : "Underutilized budget, optimize allocation to improve efficiency"
+        }));
+    }
+
+    res.json({ 
+      suggestions,
+      metadata: {
+        totalCategories: categoryCount,
+        totalSpending,
+        suggestionsCount: suggestions.length,
+        generatedAt: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error generating budget suggestions:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate budget suggestions',
+      message: 'AI budget advisor temporarily unavailable'
     });
   }
 });
