@@ -1,3 +1,6 @@
+import AnalyticsAI from '@/components/tracker/AnalyticsAI';
+import ChartAI from '@/components/tracker/ChartAI';
+import QuickInsights from '@/components/tracker/QuickInsights';
 import { BorderRadius, Colors, GlobalStyles, Spacing, Typography } from '@/constants/Styles';
 import {
     calculatePercentageChange,
@@ -74,7 +77,7 @@ const Analytics = () => {
     </View>
   );
 
-  const handleCategoryPress = (category: TopCategory) => {
+  const handleCategoryPress = async (category: TopCategory) => {
     // Filter transactions by the selected category
     const categoryTransactions = transactionsData.filter(transaction => 
       transaction.category === category.name && 
@@ -85,23 +88,59 @@ const Analytics = () => {
       sum + Math.abs(transaction.amount), 0
     );
 
-    // Show category details
-    Alert.alert(
-      `${category.name} Details`,
-      `Total ${selectedTab === 'income' ? 'Income' : 'Expenses'}: $${totalAmount.toLocaleString()}\n` +
-      `Transactions: ${category.transactions}\n` +
-      `Average per transaction: $${(totalAmount / category.transactions).toFixed(2)}`,
-      [
-        {
-          text: 'View Transactions',
-          onPress: () => {
-            // In a real app, you would navigate to transactions page with this category filter
-            Alert.alert('Navigation', `Would navigate to transactions filtered by "${category.name}"`);
-          }
+    // Get AI insights for this specific category
+    try {
+      const response = await fetch('http://localhost:3000/api/generate-category-insights', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        { text: 'Close', style: 'cancel' }
-      ]
-    );
+        body: JSON.stringify({ 
+          transactions: categoryTransactions,
+          category: category.name,
+          type: selectedTab === 'income' ? 'Income' : 'Expense'
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Show enhanced category details with AI insights
+        Alert.alert(
+          `${category.name} AI Analysis`,
+          `${data.insight || `Total ${selectedTab === 'income' ? 'Income' : 'Expenses'}: $${totalAmount.toLocaleString()}\nTransactions: ${category.transactions}\nAverage per transaction: $${(totalAmount / category.transactions).toFixed(2)}`}`,
+          [
+            {
+              text: 'View Transactions',
+              onPress: () => {
+                Alert.alert('Navigation', `Would navigate to transactions filtered by "${category.name}"`);
+              }
+            },
+            { text: 'Close', style: 'cancel' }
+          ]
+        );
+      } else {
+        throw new Error('AI analysis unavailable');
+      }
+    } catch (error) {
+      // Fallback to basic category details
+      Alert.alert(
+        `${category.name} Details`,
+        `Total ${selectedTab === 'income' ? 'Income' : 'Expenses'}: $${totalAmount.toLocaleString()}\n` +
+        `Transactions: ${category.transactions}\n` +
+        `Average per transaction: $${(totalAmount / category.transactions).toFixed(2)}\n\n` +
+        `💡 Tip: AI analysis temporarily unavailable`,
+        [
+          {
+            text: 'View Transactions',
+            onPress: () => {
+              Alert.alert('Navigation', `Would navigate to transactions filtered by "${category.name}"`);
+            }
+          },
+          { text: 'Close', style: 'cancel' }
+        ]
+      );
+    }
   };
 
   const renderTopCategory = (category: TopCategory, index: number) => (
@@ -116,9 +155,12 @@ const Analytics = () => {
           <Icon name={category.icon} size={24} color={Colors.textSecondary} />
         </View>
         <View style={styles.categoryInfo}>
-          <Text style={styles.categoryName}>{category.name}</Text>
+          <View style={styles.categoryNameRow}>
+            <Text style={styles.categoryName}>{category.name}</Text>
+            <Icon name="sparkles" size={12} color={Colors.primary} style={styles.aiIndicator} />
+          </View>
           <Text style={styles.categoryTransactions}>
-            {category.transactions} transactions
+            {category.transactions} transactions • Tap for AI insights
           </Text>
         </View>
       </View>
@@ -130,6 +172,13 @@ const Analytics = () => {
   return (
     <View style={GlobalStyles.containerPadded}>
       {/* Header */}
+      <View style={styles.headerContainer}>
+        <Text style={GlobalStyles.title}>Analytics</Text>
+        <View style={styles.aiIndicatorHeader}>
+          <Icon name="sparkles" size={16} color={Colors.primary} />
+          <Text style={styles.aiIndicatorText}>AI Enhanced</Text>
+        </View>
+      </View>
      
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Toggle Buttons */}
@@ -166,6 +215,13 @@ const Analytics = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Quick AI Insights */}
+        <QuickInsights 
+          selectedTab={selectedTab}
+          currentMonthTotal={currentMonthTotal}
+          percentageChange={percentageChange}
+        />
+
         {/* Summary Section */}
         <View style={styles.summarySection}>
           <Text style={styles.summaryLabel}>
@@ -179,8 +235,14 @@ const Analytics = () => {
           </Text>
         </View>
 
+        {/* AI Analytics Section */}
+        <AnalyticsAI selectedTab={selectedTab} />
+
         {/* Bar Chart */}
         {renderBarChart()}
+        
+        {/* AI Chart Analysis */}
+        <ChartAI monthlyData={monthlyData} selectedTab={selectedTab} />
 
         {/* Top Categories */}
         <View style={styles.topCategoriesSection}>
@@ -197,6 +259,26 @@ const Analytics = () => {
 export default Analytics;
 
 const styles = StyleSheet.create({
+  headerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xl,
+  },
+  aiIndicatorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary + '15',
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.md,
+  },
+  aiIndicatorText: {
+    fontSize: Typography.sm,
+    color: Colors.primary,
+    fontWeight: Typography.medium,
+    marginLeft: Spacing.xs,
+  },
   backButton: {
     padding: Spacing.xs,
     marginLeft: -Spacing.xs,
@@ -349,10 +431,18 @@ const styles = StyleSheet.create({
   categoryInfo: {
     flex: 1,
   },
+  categoryNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   categoryName: {
     fontSize: Typography.base,
     fontWeight: Typography.semibold,
     color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
+  },
+  aiIndicator: {
+    marginLeft: Spacing.xs,
     marginBottom: Spacing.xs,
   },
   categoryTransactions: {
