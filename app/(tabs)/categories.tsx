@@ -1,5 +1,6 @@
 import { BorderRadius, Colors, GlobalStyles, Spacing, Typography } from '@/constants/Styles';
-import React from 'react';
+import { calculatePercentageChange, getCategoryData, getCurrentMonthTotal, getPreviousMonthTotal, transactionsData } from '@/data/transactions';
+import React, { useMemo } from 'react';
 import {
     ScrollView,
     StyleSheet,
@@ -7,59 +8,43 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons';
 
 interface CategoryData {
-  id: string;
   name: string;
   amount: number;
   percentage: number;
   color: string;
 }
 
-const mockCategoryData: CategoryData[] = [
-  {
-    id: '1',
-    name: 'Food',
-    amount: 450,
-    percentage: 36.5,
-    color: '#3b82f6',
-  },
-  {
-    id: '2',
-    name: 'Rent',
-    amount: 350,
-    percentage: 28.4,
-    color: '#10b981',
-  },
-  {
-    id: '3',
-    name: 'Utilities',
-    amount: 200,
-    percentage: 16.2,
-    color: '#f97316',
-  },
-  {
-    id: '4',
-    name: 'Transportation',
-    amount: 150,
-    percentage: 12.2,
-    color: '#8b5cf6',
-  },
-  {
-    id: '5',
-    name: 'Entertainment',
-    amount: 84,
-    percentage: 6.8,
-    color: '#ef4444',
-  },
-];
-
 const Categories = () => {
-  const totalSpending = mockCategoryData.reduce((sum, category) => sum + category.amount, 0);
+  const categoryData = useMemo(() => {
+    const expenseCategories = getCategoryData(transactionsData, 'Expense');
+    const totalExpenses = expenseCategories.reduce((sum, cat) => sum + cat.amount, 0);
+    
+    const colors = ['#3b82f6', '#10b981', '#f97316', '#8b5cf6', '#ef4444', '#06b6d4', '#84cc16'];
+    
+    return expenseCategories.map((category, index) => ({
+      name: category.name,
+      amount: category.amount,
+      percentage: totalExpenses > 0 ? (category.amount / totalExpenses) * 100 : 0,
+      color: colors[index % colors.length]
+    }));
+  }, []);
 
-  const renderCategoryBar = (category: CategoryData) => (
-    <TouchableOpacity key={category.id} style={styles.categoryItem}>
+  const totalSpending = useMemo(() => {
+    return getCurrentMonthTotal(transactionsData, 'Expense');
+  }, []);
+
+  const previousMonthSpending = useMemo(() => {
+    return getPreviousMonthTotal(transactionsData, 'Expense');
+  }, []);
+
+  const percentageChange = useMemo(() => {
+    return calculatePercentageChange(totalSpending, previousMonthSpending);
+  }, [totalSpending, previousMonthSpending]);
+
+  const renderCategoryBar = (category: CategoryData, index: number) => (
+    <TouchableOpacity key={index} style={styles.categoryItem}>
       <View style={styles.categoryHeader}>
         <Text style={styles.categoryName}>{category.name}</Text>
         <Text style={styles.categoryAmount}>${category.amount}</Text>
@@ -93,14 +78,16 @@ const Categories = () => {
             <Text style={styles.summaryLabel}>Spending</Text>
             <Text style={styles.summaryAmount}>${totalSpending.toLocaleString()}</Text>
             <Text style={styles.summaryChange}>
-              This month <Text style={styles.positiveChange}>+12%</Text>
+              This month <Text style={percentageChange >= 0 ? styles.positiveChange : GlobalStyles.errorText}>
+                {percentageChange > 0 ? '+' : ''}{percentageChange}%
+              </Text>
             </Text>
           </View>
         </View>
 
         {/* Category Charts */}
         <View style={styles.categoriesSection}>
-          {mockCategoryData.map(renderCategoryBar)}
+          {categoryData.map(renderCategoryBar)}
         </View>
       </ScrollView>
     </View>

@@ -1,6 +1,15 @@
 import { BorderRadius, Colors, GlobalStyles, Spacing, Typography } from '@/constants/Styles';
-import React, { useState } from 'react';
 import {
+    calculatePercentageChange,
+    getCategoryData,
+    getCurrentMonthTotal,
+    getMonthlyData,
+    getPreviousMonthTotal,
+    transactionsData
+} from '@/data/transactions';
+import React, { useMemo, useState } from 'react';
+import {
+    Alert,
     ScrollView,
     StyleSheet,
     Text,
@@ -9,76 +18,42 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 
-interface MonthlyData {
-  month: string;
-  amount: number;
-}
-
 interface TopCategory {
-  id: string;
   name: string;
   icon: string;
   transactions: number;
   amount: number;
-}
-
-const mockMonthlyData: MonthlyData[] = [
-  { month: 'Jan', amount: 800 },
-  { month: 'Feb', amount: 600 },
-  { month: 'Mar', amount: 950 },
-  { month: 'Apr', amount: 1100 },
-  { month: 'May', amount: 750 },
-  { month: 'Jun', amount: 1234 },
-];
-
-const mockTopCategories: TopCategory[] = [
-  {
-    id: '1',
-    name: 'Rent',
-    icon: 'home-outline',
-    transactions: 12,
-    amount: 500,
-  },
-  {
-    id: '2',
-    name: 'Utilities',
-    icon: 'flash-outline',
-    transactions: 8,
-    amount: 300,
-  },
-  {
-    id: '3',
-    name: 'Supplies',
-    icon: 'cube-outline',
-    transactions: 5,
-    amount: 200,
-  },
-  {
-    id: '4',
-    name: 'Marketing',
-    icon: 'megaphone-outline',
-    transactions: 3,
-    amount: 150,
-  },
-  {
-    id: '5',
-    name: 'Travel',
-    icon: 'airplane-outline',
-    transactions: 2,
-    amount: 84,
-  },
-];
-
+};
 const Analytics = () => {
   const [selectedTab, setSelectedTab] = useState<'income' | 'expenses'>('expenses');
   
-  const maxAmount = Math.max(...mockMonthlyData.map(item => item.amount));
-  const currentAmount = 1234;
+  // Calculate data based on real transactions
+  const monthlyData = useMemo(() => {
+    return getMonthlyData(transactionsData, selectedTab === 'income' ? 'Income' : 'Expense');
+  }, [selectedTab]);
+
+  const topCategories = useMemo(() => {
+    return getCategoryData(transactionsData, selectedTab === 'income' ? 'Income' : 'Expense').slice(0, 5);
+  }, [selectedTab]);
+
+  const currentMonthTotal = useMemo(() => {
+    return getCurrentMonthTotal(transactionsData, selectedTab === 'income' ? 'Income' : 'Expense');
+  }, [selectedTab]);
+
+  const previousMonthTotal = useMemo(() => {
+    return getPreviousMonthTotal(transactionsData, selectedTab === 'income' ? 'Income' : 'Expense');
+  }, [selectedTab]);
+
+  const percentageChange = useMemo(() => {
+    return calculatePercentageChange(currentMonthTotal, previousMonthTotal);
+  }, [currentMonthTotal, previousMonthTotal]);
+
+  const maxAmount = Math.max(...monthlyData.map(item => item.amount));
 
   const renderBarChart = () => (
     <View style={styles.chartContainer}>
       <View style={styles.barsContainer}>
-        {mockMonthlyData.map((item, index) => {
+        {monthlyData.map((item, index) => {
           const barHeight = (item.amount / maxAmount) * 120; // Max height of 120
           return (
             <View key={index} style={styles.barColumn}>
@@ -87,7 +62,7 @@ const Analytics = () => {
                   style={[
                     styles.bar, 
                     { height: barHeight },
-                    index === mockMonthlyData.length - 1 && styles.currentBar
+                    index === monthlyData.length - 1 && styles.currentBar
                   ]} 
                 />
               </View>
@@ -99,8 +74,43 @@ const Analytics = () => {
     </View>
   );
 
-  const renderTopCategory = (category: TopCategory) => (
-    <TouchableOpacity key={category.id} style={styles.categoryItem}>
+  const handleCategoryPress = (category: TopCategory) => {
+    // Filter transactions by the selected category
+    const categoryTransactions = transactionsData.filter(transaction => 
+      transaction.category === category.name && 
+      transaction.type === (selectedTab === 'income' ? 'Income' : 'Expense')
+    );
+
+    const totalAmount = categoryTransactions.reduce((sum, transaction) => 
+      sum + Math.abs(transaction.amount), 0
+    );
+
+    // Show category details
+    Alert.alert(
+      `${category.name} Details`,
+      `Total ${selectedTab === 'income' ? 'Income' : 'Expenses'}: $${totalAmount.toLocaleString()}\n` +
+      `Transactions: ${category.transactions}\n` +
+      `Average per transaction: $${(totalAmount / category.transactions).toFixed(2)}`,
+      [
+        {
+          text: 'View Transactions',
+          onPress: () => {
+            // In a real app, you would navigate to transactions page with this category filter
+            Alert.alert('Navigation', `Would navigate to transactions filtered by "${category.name}"`);
+          }
+        },
+        { text: 'Close', style: 'cancel' }
+      ]
+    );
+  };
+
+  const renderTopCategory = (category: TopCategory, index: number) => (
+    <TouchableOpacity 
+      key={index} 
+      style={styles.categoryItem}
+      onPress={() => handleCategoryPress(category)}
+      activeOpacity={0.7}
+    >
       <View style={styles.categoryLeft}>
         <View style={styles.categoryIconContainer}>
           <Icon name={category.icon} size={24} color={Colors.textSecondary} />
@@ -113,6 +123,7 @@ const Analytics = () => {
         </View>
       </View>
       <Text style={styles.categoryAmount}>${category.amount}</Text>
+      <Icon name="chevron-forward" size={16} color={Colors.textSecondary} style={styles.categoryChevron} />
     </TouchableOpacity>
   );
 
@@ -160,9 +171,11 @@ const Analytics = () => {
           <Text style={styles.summaryLabel}>
             {selectedTab === 'income' ? 'Income' : 'Expenses'}
           </Text>
-          <Text style={styles.summaryAmount}>${currentAmount.toLocaleString()}</Text>
+          <Text style={styles.summaryAmount}>${currentMonthTotal.toLocaleString()}</Text>
           <Text style={styles.summaryChange}>
-            This month <Text style={styles.positiveChange}>+12%</Text>
+            This month <Text style={percentageChange >= 0 ? styles.positiveChange : GlobalStyles.errorText}>
+              {percentageChange > 0 ? '+' : ''}{percentageChange}%
+            </Text>
           </Text>
         </View>
 
@@ -173,7 +186,7 @@ const Analytics = () => {
         <View style={styles.topCategoriesSection}>
           <Text style={styles.sectionTitle}>Top Categories</Text>
           <View style={styles.categoriesList}>
-            {mockTopCategories.map(renderTopCategory)}
+            {topCategories.map(renderTopCategory)}
           </View>
         </View>
       </ScrollView>
@@ -316,6 +329,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   categoryLeft: {
     flexDirection: 'row',
@@ -348,5 +363,8 @@ const styles = StyleSheet.create({
     fontSize: Typography.lg,
     fontWeight: Typography.bold,
     color: Colors.textPrimary,
+  },
+  categoryChevron: {
+    marginLeft: Spacing.sm,
   },
 });
